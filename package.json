@@ -1,0 +1,29 @@
+{
+  "name": "social-worker-tracking-backend",
+  "version": "1.0.0",
+  "description": "Social Worker Tracking Backend API",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HarmonyOsAppDev/SocialWorkerTrackingBackend_HKU.git"
+  },
+  "author": "JeffWu",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HarmonyOsAppDev/SocialWorkerTrackingBackend_HKU/issues"
+  },
+  "homepage": "https://github.com/HarmonyOsAppDev/SocialWorkerTrackingBackend_HKU#readme",
+  "dependencies": {
+    "koa": "^2.14.2",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.1",
+    "mongoose": "^7.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

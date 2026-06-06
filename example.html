@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社工追踪系统 - API调用示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>社工追踪系统 - API调用示例</h1>
+        
+        <div class="form-group">
+            <label for="type">问卷类型：</label>
+            <select id="type">
+                <option value="day">日间</option>
+                <option value="night">夜间</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="qid">问题ID：</label>
+            <input type="number" id="qid" value="1">
+        </div>
+
+        <div class="form-group">
+            <label for="answer">答案：</label>
+            <input type="text" id="answer" value="yes">
+        </div>
+
+        <div class="form-group">
+            <label for="lat">纬度：</label>
+            <input type="number" id="lat" value="22.3193" step="0.0001">
+        </div>
+
+        <div class="form-group">
+            <label for="lng">经度：</label>
+            <input type="number" id="lng" value="114.1694" step="0.0001">
+        </div>
+
+        <div class="form-group">
+            <label for="address">地址：</label>
+            <input type="text" id="address" value="测试位置">
+        </div>
+
+        <button onclick="submitData()">提交数据</button>
+
+        <div id="response"></div>
+    </div>
+
+    <script>
+        // 生成加密时间戳
+        function generateEncryptedTimestamp(timestamp) {
+            const ENCRYPTION_KEY = 240327;
+            const SALT = 'SW_Tracking_2024';
+            const combined = `${timestamp}${SALT}${ENCRYPTION_KEY}`;
+            
+            // 使用 SubtleCrypto API 进行 SHA-256 哈希
+            return crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined))
+                .then(hash => {
+                    // 将哈希值转换为十六进制字符串
+                    const hashArray = Array.from(new Uint8Array(hash));
+                    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    // 取前10位数字
+                    return hashHex.replace(/[^0-9]/g, '').substring(0, 10);
+                });
+        }
+
+        async function submitData() {
+            try {
+                // 获取当前时间戳
+                const timestamp = Math.floor(Date.now() / 1000);
+                // 生成加密值
+                const enc = await generateEncryptedTimestamp(timestamp);
+
+                // 构建请求数据
+                const data = {
+                    type: document.getElementById('type').value,
+                    timestamp: timestamp,
+                    enc: enc,
+                    answers: [{
+                        qid: parseInt(document.getElementById('qid').value),
+                        answer: document.getElementById('answer').value
+                    }],
+                    locations: [{
+                        lat: parseFloat(document.getElementById('lat').value),
+                        lng: parseFloat(document.getElementById('lng').value),
+                        address: document.getElementById('address').value,
+                        time: new Date().toISOString()
+                    }]
+                };
+
+                // 发送请求
+                const response = await fetch('http://localhost:3000/api/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                document.getElementById('response').textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                document.getElementById('response').textContent = '错误：' + error.message;
+            }
+        }
+    </script>
+</body>
+</html> 

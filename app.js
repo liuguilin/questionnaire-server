@@ -1,3 +1,12 @@
+/**
+ * SW Tracking 问卷后端服务
+ *
+ * 提供 POST /api/submit 接口，接收 App 端提交的早/晚问卷答案及位置数据，
+ * 存储至 MongoDB 的 SW_Qes_Result_Day / SW_Qes_Result_Night 集合。
+ *
+ * 安全机制：请求需携带 timestamp + enc，enc 为时间戳的 SHA256 哈希衍生值，
+ * 用于防止重放攻击和非法请求。
+ */
 const Koa = require('koa');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
@@ -7,12 +16,15 @@ const crypto = require('crypto');
 const app = new Koa();
 const router = new Router();
 
-// 加密配置
-const ENCRYPTION_KEY = 240327; // 基础密钥
-const SALT = 'SW_Tracking_2024'; // 盐值
-const TIMESTAMP_EXPIRY = 120 * 60 * 1000; // 2 hours
+// ---------- 加密配置 ----------
+const ENCRYPTION_KEY = 240327; // 基础密钥，与 App 端保持一致
+const SALT = 'SW_Tracking_2024'; // 盐值，增加哈希复杂度
+const TIMESTAMP_EXPIRY = 120 * 60 * 1000; // 时间戳有效期：2 小时（毫秒）
 
-// 生成加密时间戳
+/**
+ * 根据 Unix 时间戳生成 10 位数字加密值
+ * 算法：SHA256(timestamp + SALT + KEY) → 提取数字字符 → 取前 10 位
+ */
 function generateEncryptedTimestamp(timestamp) {
     const combined = `${timestamp}${SALT}${ENCRYPTION_KEY}`;
     const hash = crypto.createHash('sha256').update(combined).digest('hex');
@@ -21,7 +33,12 @@ function generateEncryptedTimestamp(timestamp) {
     return numericHash;
 }
 
-// 验证时间戳
+/**
+ * 验证客户端提交的 timestamp 与 enc 是否合法
+ * 1. 长度校验：两者均须为 10 位
+ * 2. 加密值校验：enc 须与本地重新计算的结果一致
+ * 3. 时效校验：timestamp 与当前时间差不超过 TIMESTAMP_EXPIRY
+ */
 function validateTimestamp(timestamp, encryptedValue) {
     try {
         console.log('验证时间戳:', {
@@ -65,8 +82,10 @@ function validateTimestamp(timestamp, encryptedValue) {
     }
 }
 
-// connect MongoDB
+// ---------- MongoDB 连接 ----------
+// 远程连接字符串（备用）
 const connectionString = 'mongodb://8.210.252.35:27017/SW_Tracking?authSource=admin';
+// 本地开发连接
 const localConnectionString = 'mongodb://hkuapp:yuanziHKU240327@localhost:27017/SW_Tracking?authSource=admin';
 mongoose.connect(localConnectionString, {
     useNewUrlParser: true,
@@ -77,7 +96,8 @@ mongoose.connect(localConnectionString, {
     console.error('MongoDB connection error:', err);
 });
 
-// define Schema
+// ---------- 数据模型 ----------
+/** 位置信息子文档：经纬度、地址、采集时间 */
 const locationSchema = new mongoose.Schema({
     lat: Number,
     lng: Number,
@@ -85,6 +105,11 @@ const locationSchema = new mongoose.Schema({
     time: String
 });
 
+/**
+ * 问卷结果 Schema，早/晚问卷共用
+ * - uid + type + date 组合作为业务唯一键，同一天同设备同类型只保留一条记录
+ * - answers: [{ qid, answer }] 与 H5 提交的 qid 对应
+ */
 const questionResultSchema = new mongoose.Schema({
     uid: { type: String, required: true },
     type: { type: String, enum: ['day', 'night'], required: true },
@@ -98,14 +123,31 @@ const questionResultSchema = new mongoose.Schema({
     date: { type: String, required: true } // 格式: YYYY-MM-DD
 });
 
-// create model with explicit collection names
+// 早问卷 → SW_Qes_Result_Day 集合；晚问卷 → SW_Qes_Result_Night 集合
 const DayResult = mongoose.model('SW_Qes_Result_Day', questionResultSchema, 'SW_Qes_Result_Day');
 const NightResult = mongoose.model('SW_Qes_Result_Night', questionResultSchema, 'SW_Qes_Result_Night');
 
-// use bodyParser middleware
 app.use(bodyParser());
 
-// define router
+/**
+ * POST /api/submit — 提交或更新问卷答案
+ *
+ * 请求体字段：
+ *   type      - 'day' | 'night'
+ *   uid       - 设备/用户唯一标识
+ *   answers   - 答案数组 [{ qid, answer }]
+ *   locations - 位置数组（可选，空数组时不覆盖已有位置）
+ *   timestamp - Unix 秒级时间戳
+ *   enc       - 时间戳加密值
+ *   platform  - 客户端平台（ios/android）
+ *   date      - 业务日期 YYYY-MM-DD（可选，用于查重）
+ *
+ * 更新策略：
+ *   - 同 uid + type + date 已有记录 → 覆盖
+ *   - locations 为空 → 仅更新 answers，保留原 locations
+ *   - locations 非空 → 同时覆盖 answers 和 locations
+ *   - 无匹配记录 → 新建，date 取服务器当天日期
+ */
 router.post('/api/submit', async (ctx) => {
     try {
         const { type, answers, locations, timestamp, enc, platform, uid, date } = ctx.request.body;
@@ -130,13 +172,12 @@ router.post('/api/submit', async (ctx) => {
             return;
         }
 
+        // 根据问卷类型选择对应 MongoDB Model
         const Model = type === 'day' ? DayResult : NightResult;
         
-        // 确定用于查询的日期
-        // 如果提供了 date，使用它；否则使用空字符串
         const queryDate = date || '';
         
-        // 检查是否存在相同 uid、type、date 的记录
+        // 按 uid + date + type 查找是否已有当日记录
         const existingRecord = await Model.findOne({
             uid: uid,
             date: queryDate,
@@ -145,9 +186,8 @@ router.post('/api/submit', async (ctx) => {
         
         let result;
         if (existingRecord) {
-            // 如果找到记录，进行覆盖
             if (!locations || locations.length === 0) {
-                // 如果locations为空，只覆盖answers，不覆盖locations
+                // 无新位置数据：只更新答案，保留历史位置轨迹
                 result = await Model.findByIdAndUpdate(
                     existingRecord._id,
                     { 
@@ -157,7 +197,7 @@ router.post('/api/submit', async (ctx) => {
                     { new: true }
                 );
             } else {
-                // 如果locations不为空，完全覆盖位置数据（包括answers和locations）
+                // 有新位置数据：答案和位置一并覆盖
                 result = await Model.findByIdAndUpdate(
                     existingRecord._id,
                     { 
@@ -169,8 +209,7 @@ router.post('/api/submit', async (ctx) => {
                 );
             }
         } else {
-            // 如果没找到记录，创建新记录
-            // 新记录的date使用服务器时间生成
+            // 首次提交：使用服务器 UTC 日期作为记录日期
             const serverDate = new Date().toISOString().split('T')[0];
             result = await Model.create({
                 uid: uid,
@@ -198,10 +237,8 @@ router.post('/api/submit', async (ctx) => {
     }
 });
 
-// use router middleware
 app.use(router.routes()).use(router.allowedMethods());
 
-// start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

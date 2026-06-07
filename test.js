@@ -1,10 +1,23 @@
+/**
+ * /api/submit 接口集成测试脚本
+ *
+ * 覆盖场景：
+ *   Test 1 - 首次提交（含位置）
+ *   Test 2 - 同设备同日仅更新答案（locations 为空，应保留原位置）
+ *   Test 3 - 同设备同日更新答案 + 新位置
+ *   Test 4 - 不同 uid，应新建记录
+ *   Test 5 - 不同类型 night，应新建记录
+ *
+ * 运行前需先启动 app.js：node app.js
+ * 执行：node test.js
+ */
 const crypto = require('crypto');
 
-// 加密配置
-const ENCRYPTION_KEY = 240327; // 基础密钥
-const SALT = 'SW_Tracking_2024'; // 盐值
+// 加密配置（须与 app.js 保持一致）
+const ENCRYPTION_KEY = 240327;
+const SALT = 'SW_Tracking_2024';
 
-// 生成加密时间戳
+/** 生成与 app.js 相同算法的 10 位加密时间戳 */
 function generateEncryptedTimestamp(timestamp) {
     const combined = `${timestamp}${SALT}${ENCRYPTION_KEY}`;
     const hash = crypto.createHash('sha256').update(combined).digest('hex');
@@ -13,7 +26,7 @@ function generateEncryptedTimestamp(timestamp) {
     return numericHash;
 }
 
-// 测试数据
+// 模拟 App 端提交的请求体
 const testData = {
     type: 'day',
     uid: 'test-device-001',
@@ -40,13 +53,13 @@ const enc = generateEncryptedTimestamp(timestamp);
 testData.timestamp = timestamp;
 testData.enc = enc;
 
-// 测试函数
+/** 向本地服务发送 POST 请求并打印响应 */
 async function runTest(testName, data) {
     console.log(`\n=== ${testName} ===`);
     console.log('Sending data:', JSON.stringify(data, null, 2));
     
     const localLink = 'http://localhost:3000/api/submit';
-    const serverLink = 'http://8.210.252.35:3000/api/submit';
+    const serverLink = 'http://8.210.252.35:3000/api/submit'; // 远程服务（当前未使用）
     
     try {
         const response = await fetch(localLink, {

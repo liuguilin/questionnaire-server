@@ -47,6 +47,18 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
+        #voicePlayer {
+            margin-top: 16px;
+            display: none;
+        }
+        #voicePlayer audio {
+            width: 100%;
+        }
+        #voiceMeta {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -67,7 +79,7 @@
             <label for="type">问卷类型</label>
             <select id="type">
                 <option value="day">早问卷 (day)</option>
-                <option value="night">晚问卷 (night)</option>
+                <option value="night" selected>晚问卷 (night)</option>
             </select>
         </div>
 
@@ -77,6 +89,12 @@
         </div>
 
         <button type="button" onclick="fetchResult()">查询</button>
+
+        <div id="voicePlayer">
+            <h2>语音日记</h2>
+            <audio id="voiceAudio" controls preload="metadata"></audio>
+            <div id="voiceMeta"></div>
+        </div>
 
         <div id="response"></div>
     </div>
@@ -88,6 +106,13 @@
             const type = document.getElementById('type').value;
             const date = document.getElementById('date').value.trim();
             const responseEl = document.getElementById('response');
+            const voicePlayerEl = document.getElementById('voicePlayer');
+            const voiceAudioEl = document.getElementById('voiceAudio');
+            const voiceMetaEl = document.getElementById('voiceMeta');
+
+            voicePlayerEl.style.display = 'none';
+            voiceAudioEl.removeAttribute('src');
+            voiceMetaEl.textContent = '';
 
             if (!uid) {
                 responseEl.textContent = '请填写 uid';
@@ -103,6 +128,14 @@
                 const response = await fetch(`${apiBase}/api/result?${query.toString()}`);
                 const result = await response.json();
                 responseEl.textContent = JSON.stringify(result, null, 2);
+
+                const voiceDiary = result.data?.voiceDiary;
+                if (voiceDiary?.playUrl) {
+                    const playUrl = `${apiBase}${voiceDiary.playUrl}`;
+                    voiceAudioEl.src = playUrl;
+                    voiceMetaEl.textContent = `时长 ${voiceDiary.duration ?? '-'} 秒 · ${voiceDiary.mimeType || 'audio'}`;
+                    voicePlayerEl.style.display = 'block';
+                }
             } catch (error) {
                 responseEl.textContent = '错误：' + error.message;
             }

@@ -3,6 +3,7 @@
  *
  * 提供 POST /api/submit 接口，接收 App 端提交的早/晚问卷答案及位置数据，
  * 存储至 MongoDB 的 SW_Qes_Result_Day / SW_Qes_Result_Night 集合。
+ * 提供 GET /api/result 接口，按 uid 查询已保存的问卷结果。
  *
  * 安全机制：请求需携带 timestamp + enc，enc 为时间戳的 SHA256 哈希衍生值，
  * 用于防止重放攻击和非法请求。
@@ -127,6 +128,17 @@ const questionResultSchema = new mongoose.Schema({
 const DayResult = mongoose.model('SW_Qes_Result_Day', questionResultSchema, 'SW_Qes_Result_Day');
 const NightResult = mongoose.model('SW_Qes_Result_Night', questionResultSchema, 'SW_Qes_Result_Night');
 
+app.use(async (ctx, next) => {
+    ctx.set('Access-Control-Allow-Origin', '*');
+    ctx.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    ctx.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (ctx.method === 'OPTIONS') {
+        ctx.status = 204;
+        return;
+    }
+    await next();
+});
+
 app.use(bodyParser());
 
 /**
@@ -229,6 +241,60 @@ router.post('/api/submit', async (ctx) => {
         };
     } catch (error) {
         console.error('Error saving answers:', error);
+        ctx.status = 500;
+        ctx.body = {
+            success: false,
+            error: 'server-error-handled'
+        };
+    }
+});
+
+/**
+ * GET /api/result — 查询已保存的问卷结果
+ *
+ * Query 参数：
+ *   uid  - 设备/用户唯一标识（必填）
+ *   type - 'day' | 'night'，默认 day
+ *   date - 业务日期 YYYY-MM-DD（可选；不传则返回该 uid 最近一条）
+ */
+router.get('/api/result', async (ctx) => {
+    try {
+        const { uid, type = 'day', date } = ctx.query;
+
+        if (!uid) {
+            ctx.status = 400;
+            ctx.body = { error: 'params-error', message: 'uid is required' };
+            return;
+        }
+
+        if (type !== 'day' && type !== 'night') {
+            ctx.status = 400;
+            ctx.body = { error: 'type-error' };
+            return;
+        }
+
+        const Model = type === 'day' ? DayResult : NightResult;
+        const query = { uid: String(uid), type: String(type) };
+
+        if (date) {
+            query.date = String(date);
+        }
+
+        const result = await Model.findOne(query).sort({ timestamp: -1 });
+
+        if (!result) {
+            ctx.status = 404;
+            ctx.body = { success: false, error: 'not-found' };
+            return;
+        }
+
+        ctx.status = 200;
+        ctx.body = {
+            success: true,
+            data: result
+        };
+    } catch (error) {
+        console.error('Error fetching result:', error);
         ctx.status = 500;
         ctx.body = {
             success: false,

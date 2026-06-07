@@ -131,7 +131,9 @@
 
                 const voiceDiary = result.data?.voiceDiary;
                 if (voiceDiary?.playUrl) {
-                    const playUrl = `${apiBase}${voiceDiary.playUrl}`;
+                    const playUrl = voiceDiary.playUrl.startsWith('http')
+                        ? voiceDiary.playUrl
+                        : `${apiBase}${voiceDiary.playUrl}`;
                     voiceAudioEl.src = playUrl;
                     voiceMetaEl.textContent = `时长 ${voiceDiary.duration ?? '-'} 秒 · ${voiceDiary.mimeType || 'audio'}`;
                     voicePlayerEl.style.display = 'block';

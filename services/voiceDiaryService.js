@@ -36,21 +36,33 @@ const findVoiceDiaryRecord = async (uid, filename) => {
     return DayResult.findOne(query);
 };
 
-const buildVoiceDiaryPlayUrl = (filename, uid) => {
+const buildVoiceDiaryPlayPath = (filename, uid) => {
     const params = new URLSearchParams({ uid: String(uid) });
     return `/api/voice-diary/${encodeURIComponent(filename)}?${params.toString()}`;
 };
 
-const appendVoiceDiaryPlayUrl = (record, uid) => {
+const buildVoiceDiaryPlayUrl = (filename, uid, origin) => {
+    const path = buildVoiceDiaryPlayPath(filename, uid);
+    if (!origin) {
+        return path;
+    }
+
+    return `${origin.replace(/\/$/, '')}${path}`;
+};
+
+const appendVoiceDiaryPlayUrl = (record, uid, origin) => {
     if (!record || !record.voiceDiary?.filename) {
         return record;
     }
 
     const data = typeof record.toObject === 'function' ? record.toObject() : { ...record };
+    const playPath = buildVoiceDiaryPlayPath(data.voiceDiary.filename, uid);
+    const playUrl = buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid, origin);
 
     data.voiceDiary = {
         ...data.voiceDiary,
-        playUrl: buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid)
+        playPath,
+        playUrl
     };
 
     return data;
@@ -82,6 +94,7 @@ const streamVoiceDiaryFile = async (filename, uid) => {
 };
 
 module.exports = {
+    buildVoiceDiaryPlayPath,
     buildVoiceDiaryPlayUrl,
     appendVoiceDiaryPlayUrl,
     streamVoiceDiaryFile

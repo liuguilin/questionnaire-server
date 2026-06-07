@@ -21,6 +21,13 @@ const {
 
 const router = new Router();
 
+/** 从请求推断对外访问根地址，用于组装完整音频播放链接 */
+const getRequestOrigin = (ctx) => {
+    const proto = ctx.get('x-forwarded-proto') || ctx.protocol;
+    const host = ctx.get('x-forwarded-host') || ctx.host;
+    return `${proto}://${host}`;
+};
+
 /**
  * 提交问卷
  *
@@ -83,7 +90,7 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
         ctx.body = {
             success: true,
             message: 'answer-saved',
-            data: result
+            data: appendVoiceDiaryPlayUrl(result, uid, getRequestOrigin(ctx))
         };
     } catch (error) {
         console.error('Error saving answers:', error);
@@ -136,7 +143,7 @@ router.get('/api/result', async (ctx) => {
         ctx.status = 200;
         ctx.body = {
             success: true,
-            data: appendVoiceDiaryPlayUrl(result, uid)
+            data: appendVoiceDiaryPlayUrl(result, uid, getRequestOrigin(ctx))
         };
     } catch (error) {
         console.error('Error fetching result:', error);

@@ -56,13 +56,10 @@ const appendVoiceDiaryPlayUrl = (record, uid, origin) => {
     }
 
     const data = typeof record.toObject === 'function' ? record.toObject() : { ...record };
-    const playPath = buildVoiceDiaryPlayPath(data.voiceDiary.filename, uid);
-    const playUrl = buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid, origin);
 
     data.voiceDiary = {
         ...data.voiceDiary,
-        playPath,
-        playUrl
+        playUrl: buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid, origin)
     };
 
     return data;
@@ -94,7 +91,6 @@ const streamVoiceDiaryFile = async (filename, uid) => {
 };
 
 module.exports = {
-    buildVoiceDiaryPlayPath,
     buildVoiceDiaryPlayUrl,
     appendVoiceDiaryPlayUrl,
     streamVoiceDiaryFile

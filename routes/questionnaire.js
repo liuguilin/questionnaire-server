@@ -83,7 +83,7 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
             uid,
             date,
             // ctx.file 由 multer 写入 uploads/voice-diary/；无文件时为 undefined
-            voiceDiary: buildVoiceDiaryMeta(ctx.file, voiceDiaryDuration)
+            voiceDiary: buildVoiceDiaryMeta(ctx.file, voiceDiaryDuration, uid, getRequestOrigin(ctx))
         });
 
         ctx.status = 200;

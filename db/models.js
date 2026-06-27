@@ -30,7 +30,8 @@ const questionResultSchema = new mongoose.Schema({
         originalName: String,                         // 客户端原始文件名
         duration: Number,                           // 秒，来自 voiceDiaryDuration 或 q9
         mimeType: String,
-        size: Number
+        size: Number,
+        playUrl: String                               // mp4 完整播放链接，如 https://host/api/voice-diary/xxx.mp4?uid=...
     },
     timestamp: { type: Date, default: Date.now },     // 最近一次提交时间
     platform: String,                                 // 如 iOS / web

@@ -59,7 +59,8 @@ const appendVoiceDiaryPlayUrl = (record, uid, origin) => {
 
     data.voiceDiary = {
         ...data.voiceDiary,
-        playUrl: buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid, origin)
+        playUrl: data.voiceDiary.playUrl
+            || buildVoiceDiaryPlayUrl(data.voiceDiary.filename, uid, origin)
     };
 
     return data;

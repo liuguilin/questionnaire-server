@@ -1,4 +1,5 @@
 const { DayResult, NightResult } = require('../db/models');
+const { buildVoiceDiaryPlayUrl } = require('./voiceDiaryService');
 
 /** multipart 提交时问卷 JSON 在 data 字段；纯 JSON 提交时 body 即为 payload */
 const parseSubmitPayload = (body) => {
@@ -8,19 +9,25 @@ const parseSubmitPayload = (body) => {
     return body;
 };
 
-/** 从 multer 上传结果构建 MongoDB 中的 voiceDiary 元数据 */
-const buildVoiceDiaryMeta = (file, duration) => {
+/** 从 multer 上传结果构建 MongoDB 中的 voiceDiary 元数据（含 mp4 完整播放链接） */
+const buildVoiceDiaryMeta = (file, duration, uid, origin) => {
     if (!file) {
         return undefined;
     }
 
-    return {
+    const meta = {
         filename: file.filename,
         originalName: file.originalname,
         duration,
         mimeType: file.mimetype,
         size: file.size
     };
+
+    if (uid && origin) {
+        meta.playUrl = buildVoiceDiaryPlayUrl(file.filename, uid, origin);
+    }
+
+    return meta;
 };
 
 /** 按 uid + date + type upsert 问卷记录 */

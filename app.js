@@ -4,11 +4,11 @@
  * 模块划分：
  * - config/crypto.js           时间戳校验
  * - db/connection.js           MongoDB 连接
- * - db/models.js               数据模型
- * - middleware/voiceDiaryUpload.js  语音日记 multer 上传（voiceDiary 字段）
- * - services/questionnaireService.js  问卷保存业务
+ * - db/models.js               Day / Night 结果模型
+ * - middleware/voiceDiaryUpload.js  语音日记 multer 上传
+ * - services/questionnaireService.js  提交保存
  * - services/voiceDiaryService.js     语音日记播放
- * - routes/questionnaire.js    /api/submit、/api/result、/api/voice-diary 路由
+ * - routes/questionnaire.js    /api/submit、/api/result、/api/voice-diary
  */
 const Koa = require('koa');
 const bodyParser = require('koa-bodyparser');

@@ -1,8 +1,8 @@
 /**
  * 问卷 API 路由
  *
- * POST /api/submit          提交早/晚问卷（晚问卷可带 voiceDiary 音频）
- * GET  /api/result          查询某设备问卷结果
+ * POST /api/submit          提交（问卷 / 免问卷共用；用 mode 区分）
+ * GET  /api/result          查询（mode 区分有问卷 / 免问卷）
  * GET  /api/voice-diary/:filename  播放语音日记（需 uid 鉴权）
  */
 const Router = require('koa-router');
@@ -12,7 +12,9 @@ const { voiceDiaryUploadMiddleware } = require('../middleware/voiceDiaryUpload')
 const {
     parseSubmitPayload,
     buildVoiceDiaryMeta,
-    saveQuestionnaireResult
+    saveQuestionnaireResult,
+    normalizeMode,
+    buildModeQuery
 } = require('../services/questionnaireService');
 const {
     appendVoiceDiaryPlayUrl,
@@ -29,23 +31,29 @@ const getRequestOrigin = (ctx) => {
 };
 
 /**
- * 提交问卷
+ * 提交（问卷 / 免问卷共用，写入原 Day / Night 表）
  *
  * 无语音：Content-Type application/json
- *   必填：type, uid, timestamp, enc, answers
+ *   必填：type（day|night）, uid, timestamp, enc
+ *   可选：mode（quest|noQuest，默认 quest）
+ *   可选：answers（免问卷不传或 []）, locations, platform, date
+ *   可选：voiceDiary（仅晚问卷 multipart 有文件时入库；无文件则文档无此字段）
+ *   可选：voiceDiaryDuration（秒；无文件时忽略）
  *
  * 有语音（晚问卷）：Content-Type multipart/form-data
  *   问卷字段：JSON body 或 data 字段（见 parseSubmitPayload）
  *   文件字段：voiceDiary（audio/*，≤10MB）
  *   可选：voiceDiaryDuration（秒，写入 voiceDiary.duration）
  *
- * upsert 键：uid + date + type
+ * upsert 键：uid + date + type + mode
+ *   locations 空或不传：更新不覆盖原 locations
+ *   answers 不传：更新不覆盖原 answers
+ *   无 voiceDiary 文件：不写 / 不覆盖 voiceDiary
  */
 router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
     try {
         let payload;
         try {
-            // multipart 时 body 为 form 字段；纯 JSON 时 body 即 payload
             payload = parseSubmitPayload(ctx.request.body);
         } catch (parseError) {
             ctx.status = 400;
@@ -53,7 +61,7 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
             return;
         }
 
-        const { type, answers, locations, timestamp, enc, platform, uid, date } = payload;
+        const { type, mode, answers, locations, timestamp, enc, platform, uid, date } = payload;
         const voiceDiaryDuration = Number(ctx.request.body.voiceDiaryDuration || 0);
 
         if (!type || !timestamp || !enc || !uid) {
@@ -62,7 +70,6 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
             return;
         }
 
-        // 校验 timestamp + enc 合法且在 2 小时有效期内
         if (!validateTimestamp(timestamp, enc)) {
             ctx.status = 400;
             ctx.body = { error: 'invalid' };
@@ -75,14 +82,20 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
             return;
         }
 
+        if (mode != null && mode !== '' && mode !== 'quest' && mode !== 'noQuest') {
+            ctx.status = 400;
+            ctx.body = { error: 'mode-error' };
+            return;
+        }
+
         const result = await saveQuestionnaireResult({
             type,
+            mode,
             answers,
             locations,
             platform,
             uid,
             date,
-            // ctx.file 由 multer 写入 uploads/voice-diary/；无文件时为 undefined
             voiceDiary: buildVoiceDiaryMeta(ctx.file, voiceDiaryDuration, uid, getRequestOrigin(ctx))
         });
 
@@ -103,15 +116,17 @@ router.post('/api/submit', voiceDiaryUploadMiddleware, async (ctx) => {
 });
 
 /**
- * 查询问卷结果
+ * 查询结果
  *
- * Query：uid（必填）, type（day|night，默认 day）, date（可选 YYYY-MM-DD）
- * 未传 date 时返回该 uid+type 最近一条（按 timestamp 降序）
- * 若含语音日记，响应 data.voiceDiary 附带 playUrl
+ * Query：uid（必填）
+ *        type（day|night，默认 day）
+ *        mode（quest|noQuest，默认 quest；有问卷 / 免问卷）
+ *        date（可选 YYYY-MM-DD）
+ * 未传 date 时返回该 uid+type+mode 最近一条（按 timestamp 降序）
  */
 router.get('/api/result', async (ctx) => {
     try {
-        const { uid, type = 'day', date } = ctx.query;
+        const { uid, type = 'day', mode, date } = ctx.query;
 
         if (!uid) {
             ctx.status = 400;
@@ -125,8 +140,19 @@ router.get('/api/result', async (ctx) => {
             return;
         }
 
+        if (mode != null && mode !== '' && mode !== 'quest' && mode !== 'noQuest') {
+            ctx.status = 400;
+            ctx.body = { error: 'mode-error' };
+            return;
+        }
+
+        const resolvedMode = normalizeMode(mode);
         const Model = type === 'day' ? DayResult : NightResult;
-        const query = { uid: String(uid), type: String(type) };
+        const query = {
+            uid: String(uid),
+            type: String(type),
+            ...buildModeQuery(resolvedMode)
+        };
 
         if (date) {
             query.date = String(date);
@@ -160,9 +186,6 @@ router.get('/api/result', async (ctx) => {
  *
  * Path：filename（DB 中 voiceDiary.filename）
  * Query：uid（必填，须与拥有该文件的问卷记录一致）
- *
- * 成功：流式返回音频，Content-Type 为 voiceDiary.mimeType
- * 失败：400 params-error | invalid-filename，404 not-found | file-not-found
  */
 router.get('/api/voice-diary/:filename', async (ctx) => {
     try {

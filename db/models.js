@@ -1,10 +1,11 @@
 /**
- * 问卷结果数据模型（Mongoose Schema）
+ * 数据模型
  *
- * 早/晚问卷各一张表，结构相同，由 routes/questionnaire.js 按 type 读写。
- * 唯一键逻辑：uid + date + type（见 services/questionnaireService.js upsert）
+ * - SW_Qes_Result_Day / SW_Qes_Result_Night：问卷与免问卷共用
+ *   · mode=quest：有问卷（answers / 可选 voiceDiary）
+ *   · mode=noQuest：免问卷（主要写 locations）
  *
- * 语音日记只存元数据；音频文件在 uploads/voice-diary/，filename 与此处对应。
+ * upsert 键：uid + date + type + mode
  */
 const mongoose = require('mongoose');
 
@@ -16,32 +17,31 @@ const locationSchema = new mongoose.Schema({
     time: String
 });
 
-/** 单条问卷提交记录（早/晚共用） */
+/** 单条记录（早/晚共用） */
 const questionResultSchema = new mongoose.Schema({
-    uid: { type: String, required: true },           // 设备唯一 ID
+    uid: { type: String, required: true },
     type: { type: String, enum: ['day', 'night'], required: true },
-    answers: [{                                       // [{ qid, answer }]；晚问卷 q9 为录音时长
+    /** quest=有问卷，noQuest=免问卷；与客户端 selectMode 一致 */
+    mode: { type: String, enum: ['quest', 'noQuest'], default: 'quest' },
+    answers: [{
         qid: Number,
         answer: mongoose.Schema.Types.Mixed
     }],
     locations: [locationSchema],
-    voiceDiary: {                                     // 仅晚问卷且有上传音频时有值
-        filename: String,                             // 磁盘文件名，用于 /api/voice-diary 播放
-        originalName: String,                         // 客户端原始文件名
-        duration: Number,                           // 秒，来自 voiceDiaryDuration 或 q9
+    voiceDiary: {                                     // 仅晚问卷有文件时写入；否则文档无此字段
+        filename: String,
+        originalName: String,
+        duration: Number,
         mimeType: String,
         size: Number,
-        playUrl: String                               // mp4 完整播放链接，如 https://host/api/voice-diary/xxx.mp4?uid=...
+        playUrl: String
     },
-    timestamp: { type: Date, default: Date.now },     // 最近一次提交时间
-    platform: String,                                 // 如 iOS / web
-    date: { type: String, required: true }            // 问卷日期 YYYY-MM-DD
+    timestamp: { type: Date, default: Date.now },
+    platform: String,
+    date: { type: String, required: true }
 });
 
-/** 早问卷集合 SW_Qes_Result_Day */
 const DayResult = mongoose.model('SW_Qes_Result_Day', questionResultSchema, 'SW_Qes_Result_Day');
-
-/** 晚问卷集合 SW_Qes_Result_Night（含 voiceDiary） */
 const NightResult = mongoose.model('SW_Qes_Result_Night', questionResultSchema, 'SW_Qes_Result_Night');
 
 module.exports = {

@@ -7,14 +7,12 @@
  */
 const Router = require('koa-router');
 const { validateTimestamp } = require('../config/crypto');
-const { DayResult, NightResult } = require('../db/models');
 const { voiceDiaryUploadMiddleware } = require('../middleware/voiceDiaryUpload');
 const {
     parseSubmitPayload,
     buildVoiceDiaryMeta,
     saveQuestionnaireResult,
-    normalizeMode,
-    buildModeQuery
+    findQuestionnaireResult
 } = require('../services/questionnaireService');
 const {
     appendVoiceDiaryPlayUrl,
@@ -146,19 +144,7 @@ router.get('/api/result', async (ctx) => {
             return;
         }
 
-        const resolvedMode = normalizeMode(mode);
-        const Model = type === 'day' ? DayResult : NightResult;
-        const query = {
-            uid: String(uid),
-            type: String(type),
-            ...buildModeQuery(resolvedMode)
-        };
-
-        if (date) {
-            query.date = String(date);
-        }
-
-        const result = await Model.findOne(query).sort({ timestamp: -1 });
+        const result = await findQuestionnaireResult({ uid, type, mode, date });
 
         if (!result) {
             ctx.status = 404;

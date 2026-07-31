@@ -118,10 +118,32 @@ const saveQuestionnaireResult = async ({
     });
 };
 
+/**
+ * 按 uid + type + mode 查询一条记录
+ * - date 有值：查指定日期
+ * - date 无值：返回该 uid+type+mode 最近一条（timestamp 降序）
+ */
+const findQuestionnaireResult = async ({ uid, type = 'day', mode, date }) => {
+    const resolvedMode = normalizeMode(mode);
+    const Model = type === 'day' ? DayResult : NightResult;
+    const query = {
+        uid: String(uid),
+        type: String(type),
+        ...buildModeQuery(resolvedMode)
+    };
+
+    if (date) {
+        query.date = String(date);
+    }
+
+    return Model.findOne(query).sort({ timestamp: -1 });
+};
+
 module.exports = {
     parseSubmitPayload,
     buildVoiceDiaryMeta,
     saveQuestionnaireResult,
+    findQuestionnaireResult,
     normalizeMode,
     buildModeQuery
 };
